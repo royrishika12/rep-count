@@ -1,0 +1,68 @@
+name: Frontend Deployment
+
+on:
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    if: ${{ github.actor == github.repository_owner }}
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Cache Node.js modules
+        uses: actions/cache@v4
+        id: cache-npm
+        with:
+          path: ./frontend/node_modules
+          key: ${{ runner.os }}-node-${{ hashFiles('frontend/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-node-
+
+      - name: Install frontend dependencies
+        working-directory: ./frontend
+        run: npm ci
+        if: steps.cache-npm.outputs.cache-hit != 'true'
+
+      - name: Install frontend dependencies (with cache hit)
+        working-directory: ./frontend
+        run: npm install --prefer-offline --no-audit
+        if: steps.cache-npm.outputs.cache-hit == 'true'
+
+      - name: Build frontend
+        working-directory: ./frontend
+        run: npm run build
+        env:
+          REACT_APP_SERVER_URL: ${{ secrets.REACT_APP_SERVER_URL }}
+
+      - name: Configure AWS credentials with IAM Role
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Sync src-only files to S3
+        id: s3-src-only
+        run: |
+          aws s3 cp ./frontend/build/index.html s3://${{ secrets.S3_BUCKET_NAME }}/index.html
+          aws s3 cp ./frontend/build/asset-manifest.json s3://${{ secrets.S3_BUCKET_NAME }}/asset-manifest.json
+          aws s3 sync ./frontend/build/static/ s3://${{ secrets.S3_BUCKET_NAME }}/static/ --delete
+
+      - name: Invalidate src-only CloudFront Cache
+        id: invalidate-src-only
+        run: |
+          aws cloudfront create-invalidation \
+            --distribution-id ${{ secrets.CLOUDFRONT_DISTRIBUTION_ID }} \
+            --paths "/*"
+        env:
+          AWS_MAX_ATTEMPTS: 3
