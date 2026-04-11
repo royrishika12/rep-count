@@ -1,6 +1,6 @@
 # 🏋️ Rep Count
 
-**Rep Count** is a simple and beginner-friendly project designed to help users **count and track repetitions** during workouts or any repetitive activity.  
+**Rep Count** is a fullstack project designed to help users **count and track repetitions** during workouts or any repetitive activity.  
 The project focuses on clean logic, minimal design, and easy customization.
 
 ---
